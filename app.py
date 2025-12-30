@@ -6,6 +6,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from openai import OpenAI
 import tempfile
 import os
+import uuid
 
 # Page configuration
 st.set_page_config(
@@ -63,6 +64,8 @@ st.markdown('<h1 class="main-header">🤖 AI Document Intelligence</h1>', unsafe
 st.markdown('<p class="subtitle">Transform PDFs into conversational knowledge bases with production-grade RAG pipeline</p>', unsafe_allow_html=True)
 
 # Initialize session state
+if 'collection_id' not in st.session_state:
+    st.session_state.collection_id = str(uuid.uuid4())
 if 'vectorstore' not in st.session_state:
     st.session_state.vectorstore = None
 if 'uploaded_file_names' not in st.session_state:
@@ -74,15 +77,25 @@ if 'chat_history' not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    # API key input
-    api_key = os.getenv("OPENAI_API_KEY") or st.text_input(
+    # API key input - USERS PROVIDE THEIR OWN
+    api_key = st.text_input(
         "OpenAI API Key:",
         type="password",
-        help="Enter your OpenAI API key. Get one at platform.openai.com"
+        help="Get your key at platform.openai.com/api-keys",
+        placeholder="sk-..."
     )
     
     if not api_key:
         st.warning("⚠️ Please enter your API key to continue")
+        st.info("""
+        **How to get started:**
+        1. Go to platform.openai.com
+        2. Sign up (free $5 credit)
+        3. Create API key
+        4. Paste it above
+        
+        **Cost:** ~$0.01 per document
+        """)
     
     st.markdown("---")
     
@@ -94,9 +107,20 @@ with st.sidebar:
         
         # Clear documents button
         if st.button("🗑️ Clear All Documents", use_container_width=True):
+            # Delete the collection properly
+            if st.session_state.vectorstore:
+                try:
+                    st.session_state.vectorstore.delete_collection()
+                except Exception as e:
+                    pass  # Collection might not exist
+            
+            # Reset session state
             st.session_state.vectorstore = None
             st.session_state.uploaded_file_names = []
             st.session_state.chat_history = []
+            st.session_state.collection_id = str(uuid.uuid4())  # New collection
+            
+            st.success("✅ All documents cleared!")
             st.rerun()
     else:
         st.info("No documents loaded")
@@ -115,12 +139,28 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Privacy & Security
+    st.subheader("🔒 Privacy & Security")
+    st.markdown("""
+    **Your data is safe:**
+    - Documents processed in-memory only
+    - Not stored permanently
+    - Never used for model training
+    - Cleared when you close the app
+    
+    **What we store:**
+    - Nothing (session-based only)
+    """)
+    
+    st.markdown("---")
+    
     # Contact info
     st.subheader("👨‍💻 Built by Vipul")
     st.markdown("""
-    **Data Engineer & Analytics Lead | 9 years exp**
+    **Data Engineer | 9 years exp**
     
-    [LinkedIn](https://www.linkedin.com/in/vipulmeh/) | [Email](mailto:vipul@northstar.com)
+    [LinkedIn](https://www.linkedin.com/in/YOUR-LINKEDIN) | 
+    [Email](mailto:YOUR-EMAIL)
     
     **Available for:**
     - ✅ RAG pipeline development
@@ -142,11 +182,11 @@ if not api_key:
     with col1:
         st.markdown("### 📚 Knowledge Bases")
         st.markdown("""
+        - Research papers
         - Company policies
         - Product documentation
         - Training materials
-        - Employee handbooks
-        - Standard procedures
+        - Technical manuals
         """)
     
     with col2:
@@ -156,7 +196,7 @@ if not api_key:
         - Ticket resolution
         - Help desk bots
         - 24/7 assistance
-        - Multi-language support
+        - Context-aware answers
         """)
     
     with col3:
@@ -170,13 +210,12 @@ if not api_key:
         """)
     
     st.markdown("---")
-    st.subheader("🎯 Perfect For AI Agencies")
+    st.subheader("🎯 Perfect For")
     st.markdown("""
-    - **White-label ready** - Brand it as your own
-    - **Production-grade** - Battle-tested architecture
-    - **Customizable** - Modify to client needs
-    - **Scalable** - Handle 1000s of documents
-    - **API-ready** - Integrate anywhere
+    - **AI Agencies** - White-label RAG solutions for clients
+    - **Researchers** - Process academic papers with citations
+    - **Enterprises** - Internal knowledge management
+    - **Consultants** - Document intelligence services
     """)
     
     st.stop()
@@ -185,7 +224,7 @@ if not api_key:
 @st.cache_resource
 def get_embeddings():
     return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_name="all-MiniLM-L6-v2",
         model_kwargs={'device': 'cpu'},
         encode_kwargs={'normalize_embeddings': True}
     )
@@ -271,11 +310,11 @@ with col1:
                         )
                         chunks = text_splitter.split_documents(all_docs)
                         
-                        # Create vector store
+                        # Create vector store with unique collection name
                         st.session_state.vectorstore = Chroma.from_documents(
                             documents=chunks,
                             embedding=embeddings,
-                            collection_name="rag_demo_collection"
+                            collection_name=f"session_{st.session_state.collection_id}"
                         )
                         
                         # Store file names
@@ -306,21 +345,31 @@ if st.session_state.vectorstore:
     st.markdown("---")
     st.subheader("💬 Ask Questions About Your Documents")
     
-    # Example questions
-    with st.expander("💡 Example Questions", expanded=False):
+    # Query tips - MOVED BEFORE INPUT BOX
+    with st.expander("💡 How to Ask Better Questions", expanded=False):
         st.markdown("""
-        - What are the main topics covered in these documents?
-        - Summarize the key findings
-        - What recommendations are mentioned?
-        - List all dates and events mentioned
-        - What are the policy requirements?
-        - Who are the stakeholders mentioned?
+        **✅ Good Questions:**
+        - "What are the main findings?"
+        - "Summarize the methodology"
+        - "What does the paper say about [topic]?"
+        - "List all recommendations mentioned"
+        
+        **❌ Avoid:**
+        - "What is the conclusion?" (try: "What are the key findings?")
+        - "Tell me about it" (be specific)
+        - Single-word questions
+        
+        **💪 Pro Tips:**
+        - Be specific about what you want
+        - Use natural language
+        - If answer is "cannot find," try rephrasing
+        - System prioritizes accuracy over guessing
         """)
     
     # Query input
     query = st.text_input(
         "Enter your question:",
-        placeholder="e.g., What are the key findings in these documents?",
+        placeholder="e.g., What are the main topics discussed in these documents?",
         key="query_input"
     )
     
@@ -418,7 +467,7 @@ else:
     st.markdown("---")
     st.subheader("🚀 How It Works")
     
-    col1, col2, col3,col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("### 1️⃣ Upload")
@@ -449,18 +498,18 @@ else:
         - Source citations
         - No hallucinations
         """)
-
-    with col4:
-        st.markdown("### ⚠️ Current Limitations")
-        st.info("""
-        **Note:** This demo version works best with text-based PDFs. 
-        Tables and complex layouts may need additional processing.
-
-        **Coming soon:**
-        - Enhanced table extraction
-        - Image text recognition (OCR)
-        - Multi-column layout handling
-        """)
+    
+    st.markdown("---")
+    st.subheader("⚠️ Current Limitations")
+    st.info("""
+    **Note:** This demo version works best with text-based PDFs. 
+    Tables and complex layouts may need additional processing.
+    
+    **Coming soon:**
+    - Enhanced table extraction
+    - Image text recognition (OCR)
+    - Multi-column layout handling
+    """)
 
 # Footer
 st.markdown("---")
