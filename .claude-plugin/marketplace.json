@@ -1,0 +1,5 @@
+{
+  "name": "vipul-mods",
+  "owner": { "name": "vipul2710" },
+  "plugins": [{ "name": "pikachu-thinking", "source": "./claude-mods/pikachu-thinking" }]
+}
